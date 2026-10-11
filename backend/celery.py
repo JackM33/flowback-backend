@@ -11,7 +11,6 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'backend.settings')
 
 app = Celery('backend')
 broker_url = CELERY_BROKER_URL
-beat_scheduler = "django_celery_beat.schedulers:DatabaseScheduler"
 
 # Using a string here means the worker doesn't have to serialize
 # the configuration object to child processes.

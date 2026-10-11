@@ -447,7 +447,7 @@ class ScheduleEvent(BaseModel, NotifiableModel):
 
             else:
                 periodic_task = PeriodicTask.objects.create(name=f"schedule_event_{instance.id}",
-                                                            task="schedule.tasks.event_notify",
+                                                            task="flowback.schedule.tasks.event_notify",
                                                             kwargs=json.dumps(dict(event_id=instance.id)),
                                                             crontab=cron_schedule,
                                                             start_time=instance.start_date,

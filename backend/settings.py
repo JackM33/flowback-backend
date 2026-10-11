@@ -163,6 +163,8 @@ INSTALLED_APPS = [
 
 
 CELERY_BROKER_URL = f"redis://{env('FLOWBACK_REDIS_HOST')}:{env('FLOWBACK_REDIS_PORT')}/0"
+# Runs the periodic tasks stored in the database, such as repeating schedule events
+CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 
 REST_FRAMEWORK = {
     'DEFAULT_SCHEMA_CLASS': 'flowback.common.documentation.CustomAutoSchema',
