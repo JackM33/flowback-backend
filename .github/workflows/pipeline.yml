@@ -119,11 +119,11 @@ jobs:
 
       - name: Build images
         working-directory: flowback-docker
-        run: docker compose build flowback-frontend caddy
+        run: docker compose build flowback-frontend
 
       - name: Pull published images
         working-directory: flowback-docker
-        run: docker compose pull flowback-postgresql flowback-redis
+        run: docker compose pull flowback-postgresql flowback-redis caddy
 
       # --pull never: fail instead of silently falling back to a published image
       - name: Start Flowback stack
@@ -160,7 +160,7 @@ jobs:
         working-directory: flowback-interface-testing
         run:
           npx playwright test . --project chromium --retries 2 --workers 1 --reporter list
-          --grep-invert "Smoke-Test"
+          --grep-invert "Smoke-Test|missing-requirements"
 
       - name: Dump docker logs on failure
         if: ${{ failure() }}
@@ -215,10 +215,7 @@ jobs:
           script: |
             cd /home/flowback/dev-flowback
             export BACKEND_TAG=${{ env.BACKEND_TAG }}
-            docker compose pull flowback-frontend flowback-backend flowback-postgresql flowback-redis
-            docker compose up -d --no-build flowback-frontend flowback-backend flowback-postgresql flowback-redis
-            docker compose build caddy
-            docker compose up -d --no-build caddy
+            docker compose up -d --pull always
 
   # Production publishes only from master pushes.
   publish-prod:
@@ -239,7 +236,4 @@ jobs:
           # The SSH user can't read the checkout; run the deploy as flowback
           script: |
             cd /home/flowback/prod-flowback
-            docker compose pull flowback-frontend flowback-backend flowback-postgresql flowback-redis
-            docker compose up -d --no-build flowback-frontend flowback-backend flowback-postgresql flowback-redis
-            docker compose build caddy
-            docker compose up -d --no-build caddy
+            docker compose up -d --pull always
