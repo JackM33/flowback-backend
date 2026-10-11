@@ -48,6 +48,18 @@ class UserTest(APITestCase):
         response = view(request)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+    def test_user_login_failure_does_not_reveal_user_existence(self):
+        user = User.objects.create(username='test')
+        user.set_password('test123')
+        user.save()
+
+        wrong_password = generate_request(UserLoginAPI, data=dict(username='test', password='wrong'))
+        unknown_user = generate_request(UserLoginAPI, data=dict(username='nobody', password='test123'))
+
+        self.assertEqual(wrong_password.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(unknown_user.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(wrong_password.data, unknown_user.data)
+
     def test_user_delete(self):
         user = self.user_one
 

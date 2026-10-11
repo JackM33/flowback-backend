@@ -41,11 +41,16 @@ class UserLoginAPI(KnoxLoginView):
             username = attrs.get('username')
             password = attrs.get('password')
 
-            user = User.objects.get(username=username)
-            check_password = user.check_password(password)
+            # Same error for unknown user and wrong password to prevent user enumeration
+            try:
+                user = User.objects.get(username=username)
+            except User.DoesNotExist:
+                # Run the password hasher anyway so response time doesn't reveal whether the user exists
+                User().set_password(password)
+                raise ValidationError('Wrong username or password')
 
-            if not check_password:
-                raise ValidationError('Password is incorrect')
+            if not user.check_password(password):
+                raise ValidationError('Wrong username or password')
 
             return attrs
 
