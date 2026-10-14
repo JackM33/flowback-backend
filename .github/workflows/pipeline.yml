@@ -110,12 +110,25 @@ jobs:
             docker tag flowback-backend:ci "$image"
           done
 
+      # Test against the frontend branch with the same name (e.g. dev) so paired
+      # backend and frontend changes are tested together; otherwise use master
+      - name: Pick frontend branch
+        id: frontend-ref
+        env:
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          if git ls-remote --exit-code --heads https://github.com/Kattenelvis/flowback-frontend "$BRANCH" > /dev/null; then
+            echo "ref=$BRANCH" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=master" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout frontend
         uses: actions/checkout@v4
         with:
           repository: Kattenelvis/flowback-frontend
           path: flowback-frontend
-          ref: master
+          ref: ${{ steps.frontend-ref.outputs.ref }}
 
       - name: Build images
         working-directory: flowback-docker
