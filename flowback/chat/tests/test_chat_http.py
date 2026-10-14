@@ -111,11 +111,13 @@ class ChatTestHTTP(APITestCase):
 
     def test_message_update(self):
         message = MessageFactory()
+        updated_at = message.updated_at
 
         message_update(user_id=message.user_id, message_id=message.id, message="testify message")
 
         message.refresh_from_db()
         self.assertEqual(message.message, "testify message")
+        self.assertGreater(message.updated_at, updated_at)
 
     def test_message_delete(self):
         message = MessageFactory()

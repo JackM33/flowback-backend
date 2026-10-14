@@ -4,12 +4,13 @@ from pprint import pprint
 from rest_framework.test import APITestCase, APIRequestFactory, force_authenticate
 
 from flowback.common.tests import generate_request
-from flowback.group.tests.factories import GroupFactory, GroupUserFactory, GroupUserDelegateFactory
+from flowback.group.tests.factories import GroupFactory, GroupUserFactory, GroupUserDelegateFactory, \
+    GroupUserDelegatorFactory, GroupTagsFactory
 from flowback.poll.models import Poll
 from flowback.poll.tests.factories import PollFactory, PollProposalFactory, PollVotingTypeCardinalFactory, \
     PollDelegateVotingFactory
 from flowback.poll.tests.utils import generate_poll_phase_kwargs
-from flowback.poll.views.vote import DelegatePollVoteListAPI
+from flowback.poll.views.vote import DelegatePollVoteListAPI, PollProposalDelegateVoteAPI
 
 
 class PollDelegateTests(APITestCase):
@@ -159,3 +160,76 @@ class PollDelegateTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         # Should return polls where this delegate has voted
         self.assertGreaterEqual(len(response.data['results']), 1)
+
+
+class PollUserDelegateVoteTests(APITestCase):
+    def setUp(self):
+        self.group = GroupFactory()
+        self.tag = GroupTagsFactory(group=self.group)
+        self.other_tag = GroupTagsFactory(group=self.group)
+        self.creator = GroupUserFactory(group=self.group)
+        self.poll = PollFactory(created_by=self.creator, tag=self.tag, **generate_poll_phase_kwargs('vote'))
+        self.proposals = [PollProposalFactory(poll=self.poll, created_by=self.creator) for x in range(2)]
+
+        # Two delegates who both voted, so returning the wrong one shows
+        self.delegate = GroupUserDelegateFactory(group=self.group)
+        self.other_delegate = GroupUserDelegateFactory(group=self.group)
+        for delegate, scores in [(self.delegate, [4, 1]), (self.other_delegate, [2, 5])]:
+            delegate_voting = PollDelegateVotingFactory(created_by=delegate.pool, poll=self.poll)
+            for proposal, score in zip(self.proposals, scores):
+                PollVotingTypeCardinalFactory(author_delegate=delegate_voting, proposal=proposal, raw_score=score)
+
+    def delegate_to(self, delegator, pool, tag):
+        GroupUserDelegatorFactory(group=self.group, delegator=delegator, delegate_pool=pool).tags.add(tag)
+
+    def get_delegate_vote(self, group_user, poll=None):
+        response = generate_request(api=PollProposalDelegateVoteAPI,
+                                    url_params=dict(poll=(poll or self.poll).id),
+                                    user=group_user.user)
+        self.assertEqual(response.status_code, 200)
+        return response.data
+
+    def assert_delegate_vote(self, data, delegate, scores):
+        self.assertEqual(data['delegate_pool_id'], delegate.pool.id)
+        self.assertEqual({vote['proposal_id']: vote['raw_score'] for vote in data['vote']},
+                         {proposal.id: score for proposal, score in zip(self.proposals, scores)})
+
+    def assert_no_delegate_vote(self, data):
+        self.assertEqual(data, dict(delegate_pool_id=None, vote=[]))
+
+    def test_delegator_gets_their_delegate_vote(self):
+        delegator = GroupUserFactory(group=self.group)
+        self.delegate_to(delegator, self.other_delegate.pool, self.tag)
+
+        self.assert_delegate_vote(self.get_delegate_vote(delegator), self.other_delegate, [2, 5])
+
+    def test_delegate_gets_own_vote(self):
+        # Delegates get their own vote whether they self-delegated or not
+        self.assert_delegate_vote(self.get_delegate_vote(self.other_delegate.group_user), self.other_delegate, [2, 5])
+
+        self.delegate_to(self.other_delegate.group_user, self.other_delegate.pool, self.tag)
+        self.assert_delegate_vote(self.get_delegate_vote(self.other_delegate.group_user), self.other_delegate, [2, 5])
+
+    def test_member_without_delegation(self):
+        self.assert_no_delegate_vote(self.get_delegate_vote(GroupUserFactory(group=self.group)))
+
+    def test_delegator_on_other_tag(self):
+        delegator = GroupUserFactory(group=self.group)
+        self.delegate_to(delegator, self.delegate.pool, self.other_tag)
+
+        self.assert_no_delegate_vote(self.get_delegate_vote(delegator))
+
+    def test_delegate_has_not_voted(self):
+        silent_delegate = GroupUserDelegateFactory(group=self.group)
+        delegator = GroupUserFactory(group=self.group)
+        self.delegate_to(delegator, silent_delegate.pool, self.tag)
+
+        self.assert_no_delegate_vote(self.get_delegate_vote(delegator))
+
+    def test_poll_without_tag(self):
+        untagged_poll = PollFactory(created_by=self.creator, **generate_poll_phase_kwargs('vote'))
+        PollDelegateVotingFactory(created_by=self.delegate.pool, poll=untagged_poll)
+        delegator = GroupUserFactory(group=self.group)
+        self.delegate_to(delegator, self.delegate.pool, self.tag)
+
+        self.assert_no_delegate_vote(self.get_delegate_vote(delegator, untagged_poll))
