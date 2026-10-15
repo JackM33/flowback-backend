@@ -31,12 +31,12 @@ class UserTest(APITestCase):
          self.user_three) = (UserFactory() for x in range(3))
 
     def test_user_login(self):
-        data = dict(username='test', password="test123")
-        user = User.objects.create(username=data['username'])
+        data = dict(email='test@example.com', password="test123")
+        user = User.objects.create(username='test', email=data['email'])
         user.set_password(data['password'])
         user.save()
 
-        self.assertTrue(user.username, data['username'])
+        self.assertEqual(user.email, data['email'])
         self.assertTrue(user.check_password(data['password']))
 
         response = generate_request(UserLoginAPI, data=data)
@@ -49,12 +49,12 @@ class UserTest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_user_login_failure_does_not_reveal_user_existence(self):
-        user = User.objects.create(username='test')
+        user = User.objects.create(username='test', email='test@example.com')
         user.set_password('test123')
         user.save()
 
-        wrong_password = generate_request(UserLoginAPI, data=dict(username='test', password='wrong'))
-        unknown_user = generate_request(UserLoginAPI, data=dict(username='nobody', password='test123'))
+        wrong_password = generate_request(UserLoginAPI, data=dict(email='test@example.com', password='wrong'))
+        unknown_user = generate_request(UserLoginAPI, data=dict(email='nobody@example.com', password='test123'))
 
         self.assertEqual(wrong_password.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(unknown_user.status_code, status.HTTP_400_BAD_REQUEST)

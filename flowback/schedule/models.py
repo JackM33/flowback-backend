@@ -1,8 +1,8 @@
 import datetime
 import json
+from zoneinfo import ZoneInfo
 
 import pgtrigger
-from celery.schedules import crontab
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.postgres.fields import ArrayField
@@ -15,6 +15,8 @@ from rest_framework.exceptions import ValidationError
 
 from flowback.common.models import BaseModel
 from flowback.common.validators import FieldNotBlankValidator
+from flowback.schedule import recurrence
+from flowback.schedule.recurrence import validate_timezone_name
 from django.utils.translation import gettext_lazy as _
 
 from flowback.notification.models import NotifiableModel, NotificationObject
@@ -43,7 +45,9 @@ class Schedule(BaseModel):
                      tag: str = None,
                      assignees: list[int] = None,
                      meeting_link: str = None,
-                     repeat_frequency: int = None):
+                     repeat_frequency: int = None,
+                     repeat_frequency_end_date: datetime = None,
+                     timezone: str = 'UTC'):
         if not tag and not self.default_tag:
             raise ValidationError("Schedule must either have a tag or a default tag.")
 
@@ -56,7 +60,9 @@ class Schedule(BaseModel):
                               created_by=created_by,
                               tag=tag or self.default_tag,
                               meeting_link=meeting_link,
-                              repeat_frequency=repeat_frequency)
+                              repeat_frequency=repeat_frequency,
+                              repeat_frequency_end_date=repeat_frequency_end_date,
+                              timezone=timezone)
 
         if assignees:
             event.assignees.add(*assignees)
@@ -236,10 +242,10 @@ post_save.connect(ScheduleTag.post_save, ScheduleTag)
 
 class ScheduleEvent(BaseModel, NotifiableModel):
     class Frequency(models.IntegerChoices):
-        DAILY = 1, _("Daily")
-        WEEKLY = 2, _("Weekly")
-        MONTHLY = 3, _("Monthly")  # If event start_date day is 29 or higher, skip months that has these dates
-        YEARLY = 4, _("Yearly")
+        DAILY = recurrence.DAILY, _("Daily")
+        WEEKLY = recurrence.WEEKLY, _("Weekly")
+        MONTHLY = recurrence.MONTHLY, _("Monthly")  # If event start_date day is 29 or higher, skip months that has these dates
+        YEARLY = recurrence.YEARLY, _("Yearly")
 
     schedule = models.ForeignKey(Schedule, on_delete=models.CASCADE)
     title = models.TextField(validators=[FieldNotBlankValidator])
@@ -259,6 +265,9 @@ class ScheduleEvent(BaseModel, NotifiableModel):
 
     repeat_frequency = models.IntegerField(null=True, blank=True, choices=Frequency.choices)
     repeat_frequency_end_date = models.DateTimeField(null=True, blank=True)
+
+    # Repeating events keep their wall-clock time in this timezone (IANA name), also when the clocks change
+    timezone = models.CharField(max_length=64, default='UTC', validators=[validate_timezone_name])
 
     NOTIFICATION_DATA_FIELDS = (('id', int),
                                 ('title', str),
@@ -298,29 +307,16 @@ class ScheduleEvent(BaseModel, NotifiableModel):
 
         return self.notification_channel.notify(**data)
 
-    def _get_cron_from_date(self, date: datetime.datetime):
-        date = date.astimezone(timezone.now().tzinfo)
-        freq = self.Frequency
+    @property
+    def zone_info(self) -> ZoneInfo:
+        return ZoneInfo(self.timezone)
 
-        if self.repeat_frequency == freq.DAILY:
-            schedule = crontab(minute=date.minute, hour=date.hour)
-        elif self.repeat_frequency == freq.WEEKLY:
-            schedule = crontab(minute=date.minute,
-                               hour=date.hour,
-                               day_of_week=str(date.weekday()))
-        elif self.repeat_frequency == freq.MONTHLY:
-            schedule = crontab(minute=date.minute,
-                               hour=date.hour,
-                               day_of_month=date.day)
-        elif self.repeat_frequency == freq.YEARLY:
-            schedule = crontab(minute=date.minute,
-                               hour=date.hour,
-                               day_of_month=date.day,
-                               month_of_year=date.month)
-        else:
-            schedule = None
-
-        return schedule
+    def _next_occurrence(self, first: datetime.datetime, last: datetime.datetime | None):
+        return recurrence.next_occurrence(first=first,
+                                          frequency=self.repeat_frequency,
+                                          tz=self.zone_info,
+                                          after=timezone.now(),
+                                          last=last)
 
     @property
     def is_live(self) -> bool:
@@ -335,7 +331,7 @@ class ScheduleEvent(BaseModel, NotifiableModel):
             return self.start_date
 
         elif self.repeat_frequency:
-            return timezone.now() + self._get_cron_from_date(self.start_date).remaining_estimate(timezone.now())
+            return self._next_occurrence(self.start_date, last=self.repeat_frequency_end_date)
 
         return None
 
@@ -348,7 +344,10 @@ class ScheduleEvent(BaseModel, NotifiableModel):
             return self.end_date
 
         elif self.repeat_frequency:
-            return timezone.now() + self._get_cron_from_date(self.end_date).remaining_estimate(timezone.now())
+            # The repeat end date is the last time the event may start, it still ends afterwards
+            last = (self.repeat_frequency_end_date + (self.end_date - self.start_date)
+                    if self.repeat_frequency_end_date else None)
+            return self._next_occurrence(self.end_date, last=last)
 
         return None
 
@@ -410,27 +409,32 @@ class ScheduleEvent(BaseModel, NotifiableModel):
 
         # Repeat Frequency and notification management
         if instance.repeat_frequency:
+            # The crontab runs in the event's timezone, so that it keeps its time of day when the clocks change
+            end_date = instance.end_date.astimezone(instance.zone_info)
+
             cron_data = dict()
             if instance.repeat_frequency == instance.Frequency.WEEKLY:
-                cron_data['day_of_week'] = str(instance.end_date.weekday())
+                cron_data['day_of_week'] = str(end_date.weekday())
 
             elif instance.repeat_frequency == instance.Frequency.MONTHLY:
-                cron_data['day_of_month'] = instance.end_date.day
+                cron_data['day_of_month'] = end_date.day
 
             elif instance.repeat_frequency == instance.Frequency.YEARLY:
-                cron_data['month_of_year'] = instance.end_date.month
-                cron_data['day_of_month'] = instance.end_date.day
+                cron_data['month_of_year'] = end_date.month
+                cron_data['day_of_month'] = end_date.day
 
-            crontabs = CrontabSchedule.objects.filter(minute=instance.end_date.minute,
-                                                      hour=instance.end_date.hour,
+            crontabs = CrontabSchedule.objects.filter(minute=end_date.minute,
+                                                      hour=end_date.hour,
+                                                      timezone=instance.zone_info,
                                                       **cron_data)
 
             if crontabs.exists():
                 cron_schedule = crontabs.first()
 
             else:
-                cron_schedule = CrontabSchedule(minute=instance.end_date.minute,
-                                                hour=instance.end_date.hour,
+                cron_schedule = CrontabSchedule(minute=end_date.minute,
+                                                hour=end_date.hour,
+                                                timezone=instance.zone_info,
                                                 **cron_data)
 
                 cron_schedule.full_clean()
@@ -439,7 +443,7 @@ class ScheduleEvent(BaseModel, NotifiableModel):
             # If not created, update the instance task with a new crontab schedule
             task = PeriodicTask.objects.filter(name=f"schedule_event_{instance.id}").first()
             if task:
-                if task.crontab != cron_schedule and task.expires != instance.repeat_frequency_end_date:
+                if task.crontab != cron_schedule or task.expires != instance.repeat_frequency_end_date:
                     task.start_date = instance.start_date
                     task.crontab = cron_schedule
                     task.expires = instance.repeat_frequency_end_date
@@ -458,7 +462,11 @@ class ScheduleEvent(BaseModel, NotifiableModel):
                 instance.regenerate_notifications()
 
         if not created:
-            if update_fields and any([x in update_fields for x in ['end_date', 'start_date', 'repeat_frequency']]):
+            if update_fields and any([x in update_fields for x in ['end_date',
+                                                                   'start_date',
+                                                                   'repeat_frequency',
+                                                                   'repeat_frequency_end_date',
+                                                                   'timezone']]):
                 instance.regenerate_notifications()
 
 

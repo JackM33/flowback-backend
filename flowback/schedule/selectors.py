@@ -1,7 +1,7 @@
 # Schedule Event List (with multiple schedule id support)
 import django_filters
 from django.contrib.postgres.aggregates import ArrayAgg
-from django.db.models import OuterRef, Subquery, Exists
+from django.db.models import OuterRef, Subquery, Exists, Q
 
 from flowback.common.filters import NumberInFilter
 from flowback.schedule.models import ScheduleEvent, ScheduleEventSubscription, ScheduleTagSubscription, Schedule
@@ -27,6 +27,12 @@ class ScheduleEventBaseFilter(django_filters.FilterSet):
     locked = django_filters.BooleanFilter()
     tag_name = django_filters.CharFilter(lookup_expr='iexact', field_name='tag__name')
 
+    # Events in a window of time, like what a calendar shows. start_date and end_date only describe the first
+    # occurrence of a repeating event, so the lookups on them can't tell if it has a later occurrence in the window.
+    # For those the client gets the event once, and works out the occurrences itself.
+    window_start = django_filters.IsoDateTimeFilter(method='filter_window_start')
+    window_end = django_filters.IsoDateTimeFilter(field_name='start_date', lookup_expr='lt')
+
     order_by = django_filters.OrderingFilter(fields=(('created_at', 'created_at_asc'),
                                                      ('-created_at', 'created_at_desc'),
                                                      ('start_date', 'start_date_asc'),
@@ -38,6 +44,20 @@ class ScheduleEventBaseFilter(django_filters.FilterSet):
         model = ScheduleEvent
         fields = dict(start_date=['lt', 'gt', 'exact'],
                       end_date=['lt', 'gt', 'exact'])
+
+    def filter_window_start(self, queryset, name, value):
+        # An event without an end is over when it starts, a repeating one when it stops repeating
+        one_off_not_over = (Q(repeat_frequency__isnull=True)
+                            & (Q(end_date__gte=value) | Q(end_date__isnull=True, start_date__gte=value)))
+        repeating_not_over = (Q(repeat_frequency__isnull=False)
+                              & (Q(repeat_frequency_end_date__isnull=True) | Q(repeat_frequency_end_date__gte=value)))
+
+        return queryset.filter(one_off_not_over | repeating_not_over)
+
+
+# Offset pagination skips and repeats rows unless every page is sorted the same way, so ties are broken by id
+def _stable_order(queryset, default_ordering: list[str]):
+    return queryset.order_by(*(list(queryset.query.order_by) or default_ordering), 'id')
 
 
 def schedule_event_list(*, user: User, filters=None):
@@ -52,7 +72,7 @@ def schedule_event_list(*, user: User, filters=None):
                locked=Subquery(subscription_qs.values('locked')),
                subscribed=Exists(subscription_qs)).all()
 
-    return ScheduleEventBaseFilter(filters, qs).qs
+    return _stable_order(ScheduleEventBaseFilter(filters, qs).qs, ['start_date'])
 
 
 class ScheduleTagSubscriptionBaseFilter(django_filters.FilterSet):
@@ -95,4 +115,4 @@ def schedule_list(*, user: User, filters=None):
         scheduleuser__user=user
     ).annotate(available_tags=ArrayAgg('scheduletag__name', distinct=True)).all()
 
-    return ScheduleBaseFilter(filters, qs).qs
+    return _stable_order(ScheduleBaseFilter(filters, qs).qs, [])

@@ -52,6 +52,7 @@ class GroupThreadListAPI(APIView):
         work_group = WorkGroupSerializer()
         public = serializers.BooleanField()
 
+        can_delete = serializers.BooleanField()
         group_joined = serializers.BooleanField()
         group_id = serializers.IntegerField(source='created_by.group_id')
         group_name = serializers.CharField(source='created_by.group.name')

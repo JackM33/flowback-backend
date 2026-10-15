@@ -17,6 +17,8 @@ def schedule_event_create(*,
                           assignees: list[int] = None,
                           meeting_link: str = None,
                           repeat_frequency: int = None,
+                          repeat_frequency_end_date: datetime.datetime = None,
+                          timezone: str = 'UTC',
                           **kwargs) -> ScheduleEvent:
     fields = locals()
     schedule = Schedule.objects.get(id=schedule_id)
@@ -67,7 +69,9 @@ def schedule_event_update(*,
                               'end_date',
                               'tag',
                               'meeting_link',
-                              'repeat_frequency']
+                              'repeat_frequency',
+                              'repeat_frequency_end_date',
+                              'timezone']
 
     event, updated = model_update(instance=event,
                                   fields=non_side_effect_fields,

@@ -130,7 +130,7 @@ def user_home_feed(*, fetched_by: User, filters=None):
         # & ~Q(Q(work_group__workgroupuser__group_user__user=fetched_by)
         #      & Q(work_group__workgroupuser__active=True))
         # & Q(created_by__group__groupuser__is_admin=True)
-    )
+    ).filter(active=True)
 
     group_thread_vote = GroupThreadVote.objects.filter(thread_id=OuterRef('id'),
                                                        created_by__user=fetched_by).values('vote')
@@ -163,7 +163,7 @@ def user_home_feed(*, fetched_by: User, filters=None):
         # & ~Q(Q(work_group__workgroupuser__group_user__user=fetched_by)
         #      & Q(work_group__workgroupuser__active=True))
         # & Q(created_by__group__groupuser__is_admin=True)
-    )
+    ).filter(active=True)
 
     poll_user_vote = PollVoting.objects.filter(poll_id=OuterRef('id'), created_by__user=fetched_by)
     bookmarked = UserBookmark.objects.filter(user=fetched_by, content_type__model='groupthread', object_id=OuterRef('id'))

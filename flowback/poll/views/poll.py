@@ -15,7 +15,7 @@ from flowback.poll.selectors.poll import poll_list, poll_phase_template_list
 from flowback.poll.selectors.proposal import poll_user_schedule_list
 from flowback.poll.selectors.vote import poll_delegates_list
 
-from flowback.poll.services.poll import (poll_create, poll_update, poll_delete, poll_fast_forward,
+from flowback.poll.services.poll import (poll_can_delete, poll_create, poll_update, poll_delete, poll_fast_forward,
                                          poll_phase_template_create, poll_phase_template_update,
                                          poll_phase_template_delete, poll_notification_subscribe)
 
@@ -92,6 +92,10 @@ class PollListApi(APIView):
         vote_end_date = serializers.DateTimeField(required=False)
         end_date = serializers.DateTimeField(required=False)
         phase = serializers.CharField()
+        can_delete = serializers.SerializerMethodField()
+
+        def get_can_delete(self, poll) -> bool:
+            return poll_can_delete(user=self.context['user'], poll=poll)
 
         class Meta:
             model = Poll
@@ -132,7 +136,8 @@ class PollListApi(APIView):
                       'interval_mean_absolute_correctness',
                       'work_group_id',
                       'work_group_name',
-                      'phase')
+                      'phase',
+                      'can_delete')
 
     def get(self, request, group_id: int = None):
         filter_serializer = self.FilterSerializer(data=request.query_params)
@@ -145,7 +150,8 @@ class PollListApi(APIView):
             serializer_class=self.OutputSerializer,
             queryset=polls,
             request=request,
-            view=self
+            view=self,
+            serializer_context=dict(user=request.user)
         )
 
 
