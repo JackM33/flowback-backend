@@ -2,7 +2,7 @@ name: Pipeline
 
 on:
   push:
-    branches: [master, dev]
+    branches: [master]
   pull_request:
     branches: [master]
 
@@ -10,8 +10,9 @@ env:
   LINK: http://localhost:8085
   TEST_PASS: TestPassword
   PUBLIC_POLL_VERSION: 2
-  # Only two published tags: master -> :latest (which prod pulls), dev -> :dev
-  BACKEND_TAG: ${{ github.ref_name == 'master' && 'latest' || 'dev' }}
+  # Only two published tags: pushes to master -> :latest (which prod pulls),
+  # pull requests from dev -> :dev
+  BACKEND_TAG: ${{ github.event_name == 'push' && 'latest' || 'dev' }}
 
 jobs:
   backend-tests:
@@ -193,8 +194,9 @@ jobs:
   docker-publish:
     needs: frontend-tests
     permissions: {}
-    # PRs are only tested; images are published from pushes to master and dev
-    if: github.event_name == 'push'
+    # Publish from master pushes and from PRs from dev; other PRs are only tested.
+    # Fork PRs get no secrets, so skip publishing instead of failing
+    if: github.event_name == 'push' || (github.head_ref == 'dev' && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -217,8 +219,8 @@ jobs:
   publish-dev:
     needs: docker-publish
     permissions: {}
-    # The dev server runs the :dev image
-    if: ${{ github.ref == 'refs/heads/dev' }}
+    # The dev server runs the :dev image published from PRs from dev
+    if: ${{ github.event_name == 'pull_request' }}
     timeout-minutes: 10
     runs-on: ubuntu-latest
     steps:
@@ -239,7 +241,7 @@ jobs:
   publish-prod:
     needs: docker-publish
     permissions: {}
-    if: ${{ github.ref == 'refs/heads/master' }}
+    if: ${{ github.event_name == 'push' }}
     timeout-minutes: 10
     runs-on: ubuntu-latest
     environment: production
