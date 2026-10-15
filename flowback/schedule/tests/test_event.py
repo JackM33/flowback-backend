@@ -373,12 +373,14 @@ class ScheduleEventSelectorTest(APITestCase):
         self.assertEqual(list(events.values_list('id', flat=True)), [e1.id])
 
     def test_schedule_event_tag_subscription_list(self):
-        data = dict(schedule_user=self.schedule_user1,
-                    schedule_tag_id=self.tag1.id,
+        data = dict(schedule_tag_id=self.tag1.id,
                     reminders=[300, 1500, 36000])
-        ScheduleTagSubscriptionFactory(**data)
 
-        data.pop('schedule_user')
+        # Pass the tag itself, otherwise the factory creates an extra tag with a random name
+        # that can collide with an existing tag name in the schedule
+        ScheduleTagSubscriptionFactory(schedule_user=self.schedule_user1,
+                                       schedule_tag=self.tag1,
+                                       reminders=data['reminders'])
 
         response = generate_request(api=ScheduleTagSubscriptionListAPI,
                                     user=self.schedule_user1.user)
