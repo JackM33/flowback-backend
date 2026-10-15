@@ -11,6 +11,7 @@ from .views.proposal import PollProposalListAPI, PollProposalDeleteAPI, PollProp
 from .views.vote import (PollProposalVoteListAPI,
                          PollProposalVoteUpdateAPI,
                          PollProposalDelegateVoteUpdateAPI,
+                         PollProposalDelegateVoteAPI,
                          DelegatePollVoteListAPI)
 from .views.comment import PollCommentListAPI, PollCommentCreateAPI, PollCommentUpdateAPI, PollCommentDeleteAPI, \
     PollCommentVoteAPI, PollCommentAncestorListAPI
@@ -55,6 +56,8 @@ poll_patterns = [
 
     path('<int:poll>/proposal/votes', PollProposalVoteListAPI.as_view(), name='poll_proposal_votes'),
     path('<int:poll>/proposal/vote/update', PollProposalVoteUpdateAPI.as_view(), name='poll_proposal_vote_update'),
+    path('<int:poll>/proposal/vote/delegate', PollProposalDelegateVoteAPI.as_view(),
+         name='poll_proposal_delegate_vote'),
     path('<int:poll>/proposal/vote/delegate/update', PollProposalDelegateVoteUpdateAPI.as_view(),
          name='poll_proposal_delegate_vote_update'),
     path('<int:poll>/delegates', PollDelegatesListAPI.as_view(), name='poll_delegates'),

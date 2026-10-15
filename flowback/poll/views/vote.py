@@ -7,7 +7,7 @@ from flowback.common.pagination import LimitOffsetPagination, get_paginated_resp
 from flowback.common.services import get_object
 
 from flowback.poll.models import Poll
-from flowback.poll.selectors.vote import poll_vote_list, delegate_poll_vote_list
+from flowback.poll.selectors.vote import poll_vote_list, delegate_poll_vote_list, poll_user_delegate_vote
 from flowback.poll.serializers import PollSerializer
 from flowback.poll.services.vote import poll_proposal_vote_update, poll_proposal_delegate_vote_update
 
@@ -92,6 +92,27 @@ class DelegatePollVoteListAPI(APIView):
             request=request,
             view=self
         )
+
+
+@extend_schema(tags=['poll/vote'])
+class PollProposalDelegateVoteAPI(APIView):
+    """The vote of the user's own delegate on a poll (see poll_user_delegate_vote)"""
+    class OutputSerializer(serializers.Serializer):
+        class VoteSerializer(serializers.Serializer):
+            proposal_id = serializers.IntegerField()
+            raw_score = serializers.IntegerField()
+
+        delegate_pool_id = serializers.IntegerField(source='created_by_id', allow_null=True)
+        vote = VoteSerializer(source='pollvotingtypecardinal_set', many=True)
+
+    @extend_schema(responses=OutputSerializer)
+    def get(self, request, poll: int):
+        delegate_vote = poll_user_delegate_vote(fetched_by=request.user, poll_id=poll)
+
+        if delegate_vote is None:
+            return Response(dict(delegate_pool_id=None, vote=[]))
+
+        return Response(self.OutputSerializer(delegate_vote).data)
 
 
 @extend_schema(tags=['poll/vote'])

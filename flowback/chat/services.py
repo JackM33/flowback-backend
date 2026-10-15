@@ -60,7 +60,8 @@ def message_update(*, user_id: int, message_id: int, **data):
     if not user == message.user:
         raise ValidationError('User is not author of message')
 
-    fields = ['message']
+    # updated_at is listed so auto_now bumps it, update_fields skips it otherwise
+    fields = ['message', 'updated_at']
 
     return model_update(instance=message,
                         fields=fields,
