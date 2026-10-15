@@ -232,7 +232,7 @@ jobs:
           # The SSH user can't read the checkout; run the deploy as flowback
           script: |
             cd /home/flowback/dev-flowback
-            export BACKEND_TAG=${{ env.BACKEND_TAG }}
+            export FRONTEND_TAG=dev BACKEND_TAG=dev
             docker compose up -d --pull always
 
   # Production publishes only from master pushes.
