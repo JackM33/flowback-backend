@@ -106,7 +106,7 @@ def poll_list(*, fetched_by: User, group_id: Union[int, None], filters=None):
 
     joined_groups = Group.objects.filter(active=True, id=OuterRef('created_by__group_id'), groupuser__user__in=[fetched_by], groupuser__active=True)
 
-    bookmarked = UserBookmark.objects.filter(user=fetched_by, content_type__model='poll', object_id=OuterRef('id'))
+    bookmarked = UserBookmark.objects.filter(user=fetched_by, poll=OuterRef('id'))
     qs = Poll.objects.filter(base_qs, active=True).annotate(phase=poll_phase,
                 group_joined=Exists(joined_groups),
                 total_proposals=Count('pollproposal', distinct=True),

@@ -8,7 +8,7 @@ from flowback.common.filters import NumberInFilter
 from flowback.common.services import get_object
 from flowback.group.models import GroupThread, GroupThreadVote, Group, GroupUser
 from flowback.group.selectors.permission import group_user_permissions
-from flowback.user.models import User
+from flowback.user.models import User, UserBookmark
 
 
 class BaseGroupThreadFilter(django_filters.FilterSet):
@@ -80,8 +80,11 @@ def group_thread_list(*, fetched_by: User, filters=None):
                                                      user=fetched_by,
                                                      active=True))
 
+    bookmarked_qs = UserBookmark.objects.filter(user=fetched_by, thread=OuterRef('id'))
+
     qs = threads.annotate(total_comments=comment_qs,
                           can_delete=can_delete,
+                          bookmarked=Exists(bookmarked_qs),
                           group_joined=Exists(joined_groups_qs),
                           user_vote=Subquery(user_vote_qs),
                           score=Coalesce(Subquery(positive_votes_qs,

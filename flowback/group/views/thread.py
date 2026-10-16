@@ -46,6 +46,7 @@ class GroupThreadListAPI(APIView):
         description = serializers.CharField(allow_null=True, default=None)
         pinned = serializers.BooleanField()
         total_comments = serializers.IntegerField()
+        bookmarked = serializers.BooleanField()
         attachments = FileSerializer(many=True, source='attachments.filesegment_set', allow_null=True)
         score = serializers.IntegerField(default=0)
         user_vote = serializers.BooleanField(allow_null=True)

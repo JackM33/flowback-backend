@@ -134,7 +134,7 @@ def user_home_feed(*, fetched_by: User, filters=None):
 
     group_thread_vote = GroupThreadVote.objects.filter(thread_id=OuterRef('id'),
                                                        created_by__user=fetched_by).values('vote')
-    bookmarked = UserBookmark.objects.filter(user=fetched_by, content_type__model='groupthread', object_id=OuterRef('id'))
+    bookmarked = UserBookmark.objects.filter(user=fetched_by, thread=OuterRef('id'))
 
     thread_qs = thread_qs.annotate(related_model=models.Value('thread', models.CharField()),
                                    group_id=F('created_by__group_id'),
@@ -166,7 +166,7 @@ def user_home_feed(*, fetched_by: User, filters=None):
     ).filter(active=True)
 
     poll_user_vote = PollVoting.objects.filter(poll_id=OuterRef('id'), created_by__user=fetched_by)
-    bookmarked = UserBookmark.objects.filter(user=fetched_by, content_type__model='groupthread', object_id=OuterRef('id'))
+    bookmarked = UserBookmark.objects.filter(user=fetched_by, poll=OuterRef('id'))
 
     poll_qs = poll_qs.annotate(related_model=models.Value('poll', models.CharField()),
                                group_id=F('created_by__group_id'),

@@ -79,6 +79,7 @@ class PollListApi(APIView):
         hide_poll_users = serializers.BooleanField(source='created_by.group.hide_poll_users')
         winning_proposal_id = serializers.IntegerField(source='result.id', allow_null=True)
         total_comments = serializers.IntegerField()
+        bookmarked = serializers.BooleanField()
         total_proposals = serializers.IntegerField()
         total_predictions = serializers.IntegerField()
         work_group_id = serializers.IntegerField(allow_null=True)
@@ -128,6 +129,7 @@ class PollListApi(APIView):
                       'pinned',
                       'dynamic',
                       'total_comments',
+                      'bookmarked',
                       'total_proposals',
                       'total_predictions',
                       'quorum',

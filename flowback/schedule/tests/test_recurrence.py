@@ -21,7 +21,8 @@ from rest_framework.test import APITestCase
 from flowback.notification.models import NotificationObject
 from flowback.schedule.models import ScheduleEvent
 from flowback.schedule.recurrence import (DAILY, WEEKLY, MONTHLY, YEARLY,
-                                          occurrence, next_occurrence, validate_timezone_name)
+                                          occurrence, occurrence_index, next_occurrence,
+                                          validate_timezone_name)
 from flowback.schedule.services import schedule_event_update
 from flowback.schedule.tasks import event_notify
 from flowback.schedule.tests.factories import ScheduleEventFactory
@@ -145,6 +146,58 @@ class NextOccurrenceTest(SimpleTestCase):
 
         self.assertEqual(next_occurrence(first, DAILY, STOCKHOLM, after=utc(2026, 11, 2, 20), last=last), last)
         self.assertIsNone(next_occurrence(first, DAILY, STOCKHOLM, after=utc(2026, 11, 3, 20), last=last))
+
+
+class OccurrenceIndexTest(SimpleTestCase):
+    """Test finding which occurrence an event holds at a time"""
+
+    def test_first_occurrence_is_index_zero(self):
+        first = utc(2026, 10, 15, 16)
+
+        for frequency in (DAILY, WEEKLY, MONTHLY, YEARLY):
+            self.assertEqual(occurrence_index(first, frequency, STOCKHOLM, first), 0)
+
+    def test_is_the_index_of_the_occurrence_at_that_time(self):
+        first = utc(2026, 10, 15, 16)
+
+        for frequency in (DAILY, WEEKLY, MONTHLY, YEARLY):
+            for index in (1, 5, 30):
+                at = occurrence(first, frequency, index, STOCKHOLM)
+                if at is not None:
+                    self.assertEqual(occurrence_index(first, frequency, STOCKHOLM, at), index)
+
+    def test_follows_the_clocks_of_the_timezone(self):
+        # 18:00 in Stockholm on Oct 15, then 18:00 is 17:00 in UTC when the clocks go back on Oct 25
+        first = utc(2026, 10, 15, 16)
+
+        self.assertEqual(occurrence_index(first, DAILY, STOCKHOLM, utc(2026, 10, 26, 17)), 11)
+        self.assertIsNone(occurrence_index(first, DAILY, STOCKHOLM, utc(2026, 10, 26, 16)))
+
+    def test_a_time_to_the_millisecond_is_the_same_time(self):
+        first = utc(2026, 10, 15, 16).replace(microsecond=790514)
+
+        for at in (first.replace(microsecond=790000), first.replace(microsecond=791000)):
+            self.assertEqual(occurrence_index(first, DAILY, UTC, at), 0)
+
+        self.assertIsNone(occurrence_index(first, DAILY, UTC, first.replace(microsecond=792000)))
+
+    def test_is_none_between_occurrences(self):
+        first = utc(2026, 10, 15, 16)
+
+        self.assertIsNone(occurrence_index(first, WEEKLY, UTC, utc(2026, 10, 16, 16)))
+        self.assertIsNone(occurrence_index(first, WEEKLY, UTC, utc(2026, 10, 22, 17)))
+
+    def test_is_none_before_the_first_occurrence(self):
+        self.assertIsNone(occurrence_index(utc(2026, 10, 15, 16), DAILY, UTC, utc(2026, 10, 14, 16)))
+
+    def test_is_none_in_a_month_without_the_day(self):
+        self.assertIsNone(occurrence_index(utc(2026, 1, 31, 12), MONTHLY, UTC, utc(2026, 2, 28, 12)))
+
+    def test_is_none_after_the_last_occurrence(self):
+        first = utc(2026, 10, 15, 16)
+
+        self.assertEqual(occurrence_index(first, DAILY, UTC, utc(2026, 10, 17, 16), last=utc(2026, 10, 17, 16)), 2)
+        self.assertIsNone(occurrence_index(first, DAILY, UTC, utc(2026, 10, 18, 16), last=utc(2026, 10, 17, 16)))
 
 
 class ValidateTimezoneTest(SimpleTestCase):

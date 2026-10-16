@@ -70,6 +70,7 @@ def schedule_event_list(*, user: User, filters=None):
     ).annotate(reminders=Subquery(subscription_qs.values('reminders')),
                user_tags=Subquery(subscription_qs.values('tags')),
                locked=Subquery(subscription_qs.values('locked')),
+               subscribed_occurrence=Subquery(subscription_qs.values('occurrence_start')),
                subscribed=Exists(subscription_qs)).all()
 
     return _stable_order(ScheduleEventBaseFilter(filters, qs).qs, ['start_date'])

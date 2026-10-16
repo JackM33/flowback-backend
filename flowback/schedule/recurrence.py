@@ -18,6 +18,9 @@ WEEKLY = 2
 MONTHLY = 3  # Months without the event's day are skipped, a monthly event on the 31st is never held in April
 YEARLY = 4  # Years without the event's day are skipped, a yearly event on Feb 29th is only held in leap years
 
+# Clients only know a time to the millisecond, so a time within one is the same time
+SAME_TIME = datetime.timedelta(milliseconds=1)
+
 # Far enough to get past skipped months and years (Feb 29th comes around at most every eight years)
 LOOKAHEAD = 12
 
@@ -69,6 +72,27 @@ def occurrence(first: datetime.datetime,
     return wall.replace(tzinfo=tz).astimezone(datetime.timezone.utc)
 
 
+def _search_start(first: datetime.datetime,
+                  frequency: int,
+                  tz: ZoneInfo,
+                  after: datetime.datetime) -> int:
+    """
+    An index to start looking from for the first occurrence after the given time,
+    a little before the answer to not go through every occurrence since the first one
+    """
+    wall_first = first.astimezone(tz)
+    wall_after = after.astimezone(tz)
+
+    if frequency in (DAILY, WEEKLY):
+        index = (wall_after.date() - wall_first.date()).days // (1 if frequency == DAILY else 7)
+    elif frequency == MONTHLY:
+        index = (wall_after.year - wall_first.year) * 12 + wall_after.month - wall_first.month
+    else:
+        index = wall_after.year - wall_first.year
+
+    return max(0, index - 1)
+
+
 def next_occurrence(first: datetime.datetime,
                     frequency: int,
                     tz: ZoneInfo,
@@ -77,17 +101,7 @@ def next_occurrence(first: datetime.datetime,
     """
     The first occurrence after the given time, None if the event doesn't get to it before last
     """
-    wall_first = first.astimezone(tz)
-    wall_after = after.astimezone(tz)
-
-    # Start a little before the answer to not go through every occurrence since the first one
-    if frequency in (DAILY, WEEKLY):
-        index = (wall_after.date() - wall_first.date()).days // (1 if frequency == DAILY else 7)
-    elif frequency == MONTHLY:
-        index = (wall_after.year - wall_first.year) * 12 + wall_after.month - wall_first.month
-    else:
-        index = wall_after.year - wall_first.year
-    index = max(0, index - 1)
+    index = _search_start(first, frequency, tz, after)
 
     for i in range(index, index + LOOKAHEAD):
         candidate = occurrence(first, frequency, i, tz)
@@ -100,5 +114,31 @@ def next_occurrence(first: datetime.datetime,
 
         if candidate > after:
             return candidate
+
+    return None
+
+
+def occurrence_index(first: datetime.datetime,
+                     frequency: int,
+                     tz: ZoneInfo,
+                     at: datetime.datetime,
+                     last: datetime.datetime | None = None) -> int | None:
+    """
+    The index of the occurrence that happens at the given time (to the millisecond),
+    None if the event has no occurrence then
+    """
+    index = _search_start(first, frequency, tz, at)
+
+    for i in range(index, index + LOOKAHEAD):
+        candidate = occurrence(first, frequency, i, tz)
+
+        if candidate is None:
+            continue
+
+        if abs(candidate - at) < SAME_TIME:
+            return i if last is None or candidate <= last else None
+
+        if candidate > at:
+            return None
 
     return None
