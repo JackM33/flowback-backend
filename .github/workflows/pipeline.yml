@@ -176,7 +176,7 @@ jobs:
       - name: Run the rest of the tests
         working-directory: flowback-interface-testing
         run:
-          npx playwright test . --project chromium --retries 2 --workers 1 --reporter list
+          npx playwright test . --project chromium --retries 2 --workers 1 --reporter list --max-failures=4
           --grep-invert "Smoke-Test|missing-requirements"
 
       - name: Dump docker logs on failure
