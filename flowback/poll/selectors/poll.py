@@ -30,6 +30,7 @@ class BasePollFilter(django_filters.FilterSet):
     tag_id = django_filters.NumberFilter(lookup_expr='exact', field_name='tag__id')
     phase = django_filters.CharFilter(lookup_expr='iexact')
     work_group_ids = NumberInFilter(field_name="work_group_id")
+    is_archived = django_filters.BooleanFilter()
 
     class Meta:
         model = Poll
@@ -54,6 +55,10 @@ class BasePollFilter(django_filters.FilterSet):
 # TODO order_by(pinned, param)
 def poll_list(*, fetched_by: User, group_id: Union[int, None], filters=None):
     filters = filters or {}
+
+    # Archived polls are hidden unless requested, or looked up directly by id
+    if filters.get('is_archived') is None and not filters.get('id') and not filters.get('id_list'):
+        filters = {**filters, 'is_archived': False}
 
     # Determine phase by case qs
     poll_phase = Case(

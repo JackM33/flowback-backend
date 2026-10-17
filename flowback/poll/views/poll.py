@@ -45,6 +45,7 @@ class PollListApi(APIView):
         status = serializers.IntegerField(required=False)
         phase = serializers.CharField(required=False)
         work_group_ids = serializers.CharField(required=False)
+        is_archived = serializers.BooleanField(required=False, default=None, allow_null=True)
 
         # Blob of gt and lt filter fields
         start_date__gt = serializers.DateTimeField(required=False)
@@ -139,6 +140,7 @@ class PollListApi(APIView):
                       'work_group_id',
                       'work_group_name',
                       'phase',
+                      'is_archived',
                       'can_delete')
 
     def get(self, request, group_id: int = None):

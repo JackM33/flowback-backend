@@ -83,12 +83,17 @@ class UserHomeFeedFilter(django_filters.FilterSet):
     pinned = django_filters.BooleanFilter(lookup_expr='exact')
     group_ids = NumberInFilter(field_name='created_by__group_id')
     bookmarked = django_filters.BooleanFilter()
+    is_archived = django_filters.BooleanFilter()
 
 
 # TODO add relevant Count (proposal, prediction, comments) to the home feed if possible
 def user_home_feed(*, fetched_by: User, filters=None):
     filters = filters or {}
     ordering_filter = {}
+
+    # Archived posts are hidden unless requested, or looked up directly by id
+    if filters.get('is_archived') is None and not filters.get('id'):
+        filters = {**filters, 'is_archived': False}
 
     if 'order_by' in filters.keys():
         ordering_filter['order_by'] = filters.pop('order_by')
@@ -106,7 +111,8 @@ def user_home_feed(*, fetched_by: User, filters=None):
                       'group_joined',
                       'user_vote',
                       'pinned',
-                      'bookmarked']
+                      'bookmarked',
+                      'is_archived']
 
     q = (Q(created_by__group__groupuser__user__in=[fetched_by])
          & Q(created_by__group__groupuser__active=True))  # User in group

@@ -37,6 +37,7 @@ class GroupThreadListAPI(APIView):
         group_ids = serializers.CharField(required=False)
         user_vote = serializers.BooleanField(required=False, allow_null=True, default=None)
         work_group_ids = serializers.CharField(required=False)
+        is_archived = serializers.BooleanField(required=False, allow_null=True, default=None)
 
     class OutputSerializer(serializers.Serializer):
         created_by = GroupUserSerializer(hide_relevant_users=True)
@@ -45,6 +46,7 @@ class GroupThreadListAPI(APIView):
         title = serializers.CharField()
         description = serializers.CharField(allow_null=True, default=None)
         pinned = serializers.BooleanField()
+        is_archived = serializers.BooleanField()
         total_comments = serializers.IntegerField()
         bookmarked = serializers.BooleanField()
         attachments = FileSerializer(many=True, source='attachments.filesegment_set', allow_null=True)
