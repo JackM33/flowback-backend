@@ -38,6 +38,7 @@ jobs:
       FLOWBACK_PSQL_PASSWORD: flowback
       FLOWBACK_PSQL_HOST: localhost
       FLOWBACK_PSQL_PORT: "5432"
+      FLOWBACK_LEDGER_MODULE: "True"
     steps:
       - uses: actions/checkout@v5
       - name: Set up Python ${{ matrix.python-version }}
@@ -88,6 +89,7 @@ jobs:
     env:
       LINK: http://localhost:8085
       TEST_PASS: TestPassword
+      FLOWBACK_LEDGER_MODULE: "TRUE"
     steps:
       - name: Checkout flowback-docker
         uses: actions/checkout@v4

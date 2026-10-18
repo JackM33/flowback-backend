@@ -3,6 +3,7 @@ import django_filters
 from flowback.user.models import User
 from .models import Account, Transaction
 
+
 class BaseAccountFilter(django_filters.FilterSet):
     order_by = django_filters.OrderingFilter(
         fields=(('created_at', 'created_at_asc'),
@@ -19,11 +20,9 @@ class BaseAccountFilter(django_filters.FilterSet):
 def account_list(*, user: User, filters=None):
     filters = filters or {}
 
-    qs = Account.objects.filter(user=user).all()
+    qs = Account.objects.filter(user=user).order_by('id')
 
-    filtered_qs = BaseAccountFilter(filters, qs).qs
-
-    return filtered_qs
+    return BaseAccountFilter(filters, qs).qs
 
 
 class BaseTransactionFilter(django_filters.FilterSet):
@@ -34,46 +33,30 @@ class BaseTransactionFilter(django_filters.FilterSet):
                 ('-date', 'date_desc'))
     )
 
-    date_after = django_filters.DateFilter(field_name='date', lookup_expr='gt')
-    date_before = django_filters.DateFilter(field_name='date', lookup_expr='lt')
-
-    description = django_filters.CharFilter(
-        field_name='description',
-        lookup_expr='icontains' 
-    )
-
-    account_ids = django_filters.CharFilter(
-        method='filter_by_accounts'
-    )
-
-    def filter_by_accounts(self, queryset, name, value):
-        # Filter out non-integer values
-        # account_ids = [int(id) for id in value.split(',') if id.isdigit()]
-        print(value, value.split(',')[0], "IDDDEEE")
-        return queryset.filter(account__id__in=value.split(','))
+    # Both bounds are inclusive and compare the calendar date only
+    date_after = django_filters.DateFilter(field_name='date', lookup_expr='date__gte')
+    date_before = django_filters.DateFilter(field_name='date', lookup_expr='date__lte')
+    description = django_filters.CharFilter(field_name='description', lookup_expr='icontains')
+    account_ids = django_filters.BaseInFilter(field_name='account_id', lookup_expr='in')
 
     class Meta:
         model = Transaction
-        fields = {
-            'id': ['exact'],
-            # 'account_ids': [],
-            'description': ['icontains'],
-        }
-        extra = {
-            'date_after': {'lookup_expr': 'gt'},
-            'date_before': {'lookup_expr': 'lt'},
-        }
-        
+        fields = ['id']
 
 
-# Modify the transaction_list function
 def transaction_list(*, user: User, filters=None):
-    filters = filters or {}
+    filters = dict(filters or {})
 
-    qs = Transaction.objects.filter().all()
+    # The filterset expects a comma separated string for the "in" lookup
+    if 'account_ids' in filters:
+        filters['account_ids'] = ','.join(str(account_id) for account_id in filters['account_ids'])
 
-    # Apply custom filters using BaseTransactionFilter
-    filtered_qs = BaseTransactionFilter(filters, qs).qs
+        if not filters['account_ids']:
+            del filters['account_ids']
 
-    return filtered_qs
+    qs = (Transaction.objects
+          .filter(account__user=user)
+          .select_related('account', 'account__user')
+          .order_by('-date', '-id'))
 
+    return BaseTransactionFilter(filters, qs).qs

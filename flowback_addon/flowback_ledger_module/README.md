@@ -7,6 +7,10 @@ It is a decision making platform.
 
 
 ## Installation
-Deployed with the rest of the add-ons, see `ansible/tasks/flowback-tenant.yml`.
-The URLs are mounted in `flowback_addon/urls.py` and the app is enabled by listing
-`flowback_addon.flowback_ledger_module` in the backend's `INTEGRATIONS` variable.
+
+Set `FLOWBACK_LEDGER_MODULE=True` in the backend and `PUBLIC_FLOWBACK_LEDGER_MODULE=TRUE` in the frontend,
+then run `python manage.py migrate`. With flowback-docker both are set by the single variable
+`FLOWBACK_LEDGER_MODULE=TRUE` in its `.env`. Leave it unset (or `FALSE`) to disable the module.
+
+The URLs are mounted in `flowback_addon/urls.py` under `/ledger/`. Alternatively the app can be
+enabled by listing `flowback_addon.flowback_ledger_module` in the backend's `INTEGRATIONS` variable.

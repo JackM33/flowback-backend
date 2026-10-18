@@ -15,6 +15,21 @@ from .services import (account_create,
 from flowback.common.pagination import LimitOffsetPagination, get_paginated_response
 
 
+def validate_transaction_amounts(data):
+    debit_amount = data.get('debit_amount') or 0
+    credit_amount = data.get('credit_amount') or 0
+
+    if not debit_amount and not credit_amount:
+        raise serializers.ValidationError("You must provide a debit or credit amount.")
+    if debit_amount and credit_amount:
+        raise serializers.ValidationError(
+            "Each transaction must have either a debit or a credit amount, but not both")
+    if debit_amount < 0 or credit_amount < 0:
+        raise serializers.ValidationError("The debit or credit amount must be greater than zero.")
+
+    return data
+
+
 class AccountListAPI(APIView):
     class Pagination(LimitOffsetPagination):
         default_limit = 20
@@ -34,7 +49,7 @@ class AccountListAPI(APIView):
         serializer = self.FilterSerializer(data=request.query_params)
         serializer.is_valid(raise_exception=True)
 
-        accounts = account_list(user=request.user)
+        accounts = account_list(user=request.user, filters=serializer.validated_data)
 
         return get_paginated_response(pagination_class=self.Pagination,
                                       serializer_class=self.OutputSerializer,
@@ -93,7 +108,6 @@ class TransactionListAPI(APIView):
         date_after = serializers.DateField(required=False)
         date_before = serializers.DateField(required=False)
         description = serializers.CharField(required=False)
-        accounts = serializers.CharField(required=False)
 
     class OutputSerializer(serializers.Serializer):
         account = AccountSerializer()
@@ -106,19 +120,9 @@ class TransactionListAPI(APIView):
 
     def get(self, request):
         serializer = self.FilterSerializer(data=request.query_params)
-        print("GEEEET", serializer)
         serializer.is_valid(raise_exception=True)
 
-        account_ids = serializer.validated_data.get('account_ids', [])
-
-        # if account_ids:
-        #     filters['account_ids'] = account_ids
-
-        # transactions = transaction_list(filters=serializer.validated_data, user=request.user)
-        transactions = Transaction.objects.all()
-        if account_ids:
-            transactions = transactions.filter(account_id__in=account_ids)
-        print(account_ids)
+        transactions = transaction_list(user=request.user, filters=serializer.validated_data)
 
         return get_paginated_response(pagination_class=self.Pagination,
                                       serializer_class=self.OutputSerializer,
@@ -135,51 +139,37 @@ class TransactionCreateAPI(APIView):
                       'description', 'verification_number', 'date']
 
         def validate(self, data):
-            if not data.get('debit_amount') and not data.get('credit_amount'):
-                raise serializers.ValidationError(
-                    "You must provide a debit or credit amount.")
-            if data.get('debit_amount') and data.get('credit_amount'):
-                raise serializers.ValidationError(
-                    "Each transaction must have either a debit or a credit amount, but not both")
-            if data.get('debit_amount', 0) <= 0 and data.get('credit_amount', 0) <= 0:
-                raise serializers.ValidationError(
-                    "The debit or credit amount must be greater than zero.")
-            return data
+            return validate_transaction_amounts(data)
 
     def post(self, request, account_id: int):
         serializer = self.InputSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        account = transaction_create(account_id=account_id, user_id=request.user.id,
-                                     **serializer.validated_data)
+        transaction = transaction_create(account_id=account_id, user_id=request.user.id,
+                                         **serializer.validated_data)
 
-        return Response(status=status.HTTP_200_OK, data=account.id)
+        return Response(status=status.HTTP_200_OK, data=transaction.id)
 
 
 class TransactionUpdateApi(APIView):
     class InputSerializer(serializers.ModelSerializer):
+        # Moves the transaction to another of the user's accounts
+        new_account_id = serializers.IntegerField(required=False)
+
         class Meta:
             model = Transaction
             fields = ['id', 'debit_amount', 'credit_amount',
-                      'description', 'verification_number', 'date']
+                      'description', 'verification_number', 'date', 'new_account_id']
 
         def validate(self, data):
-            if not data.get('debit_amount') and not data.get('credit_amount'):
-                raise serializers.ValidationError(
-                    "You must provide a debit or credit amount.")
-            if data.get('debit_amount') and data.get('credit_amount'):
-                raise serializers.ValidationError(
-                    "Each transaction must have either a debit or a credit amount, but not both")
-            if data.get('debit_amount', 0) <= 0 and data.get('credit_amount', 0) <= 0:
-                raise serializers.ValidationError(
-                    "The debit or credit amount must be greater than zero.")
-            return data
+            return validate_transaction_amounts(data)
 
     def post(self, request, account_id: int, transaction_id: int):
         serializer = self.InputSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         transaction_update(user_id=request.user.id,
+                           account_id=account_id,
                            transaction_id=transaction_id,
                            data=serializer.validated_data)
         return Response(status=status.HTTP_200_OK)
@@ -188,6 +178,7 @@ class TransactionUpdateApi(APIView):
 class TransactionDeleteAPI(APIView):
     def post(self, request, account_id: int, transaction_id: int):
         transaction_delete(user_id=request.user.id,
+                           account_id=account_id,
                            transaction_id=transaction_id)
 
         return Response(status=status.HTTP_200_OK)
