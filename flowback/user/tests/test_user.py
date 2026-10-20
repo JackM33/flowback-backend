@@ -1,5 +1,6 @@
 import json
 
+from django.core.exceptions import ValidationError
 from knox.auth import TokenAuthentication
 from rest_framework import status
 from rest_framework.test import APITestCase, APIRequestFactory, force_authenticate
@@ -7,6 +8,7 @@ from rest_framework.test import APITestCase, APIRequestFactory, force_authentica
 from flowback.chat.tests.factories import MessageChannelFactory
 from flowback.comment.tests.factories import CommentFactory
 from flowback.common.tests import generate_request
+from flowback.common.validators import FieldNoInvisibleCharactersValidator
 from flowback.group.models import GroupThread, GroupUser
 from flowback.group.tests.factories import GroupThreadFactory, GroupUserFactory, GroupFactory, WorkGroupFactory, \
     WorkGroupUserFactory
@@ -17,8 +19,8 @@ from flowback.user.models import User
 from flowback.user.services import user_create, user_create_verify, user_delete
 from flowback.user.tests.factories import UserFactory
 from flowback.user.views.home import UserHomeFeedAPI
-from flowback.user.views.user import UserDeleteAPI, UserUpdateApi, UserGetApi, UserNotificationSubscribeAPI, \
-    UserCreateApi, UserLoginAPI
+from flowback.user.views.user import UserDeleteAPI, UserGetChatChannelAPI, UserUpdateApi, UserChatInviteAPI, UserGetApi, \
+    UserNotificationSubscribeAPI, UserCreateApi, UserCreateVerifyApi, UserLoginAPI
 from flowback.user.models import OnboardUser
 
 
@@ -95,6 +97,84 @@ class UserTest(APITestCase):
             self.assertTrue(User.objects.filter(id=user.id).exists())
 
             user_delete(user_id=user.id)  # Test if user can create new account after deletion
+
+    def test_username_rejects_invisible_characters(self):
+        invisible = {
+            'space': 'an na',
+            'tab': 'anna\t',
+            'non-breaking space': 'anna\u00a0',
+            'zero-width space': 'an\u200bna',
+            'zero-width joiner': 'an\u200dna',
+            'right-to-left override': 'an\u202ena',
+            # Letters according to Unicode, so the username regex lets them through
+            'hangul choseong filler': 'anna\u115f',
+            'hangul jungseong filler': 'anna\u1160',
+            'hangul filler': 'anna\u3164',
+            'halfwidth hangul filler': 'anna\uffa0',
+            'only hangul fillers': '\u3164\u3164\u3164',
+        }
+        username_field = User._meta.get_field('username')
+
+        for name, username in invisible.items():
+            with self.subTest(name):
+                with self.assertRaises(ValidationError):
+                    FieldNoInvisibleCharactersValidator(username)
+
+                # Also checks that the validator is actually set on the field
+                with self.assertRaises(ValidationError):
+                    username_field.run_validators(username)
+
+    def test_username_allows_visible_characters(self):
+        username_field = User._meta.get_field('username')
+
+        for username in ['anna', 'Anna_Svensson-2', 'anna.svensson+test@example', 'åsa', 'Ørjan', '李雷', 'Σωκράτης']:
+            with self.subTest(username):
+                FieldNoInvisibleCharactersValidator(username)
+                username_field.run_validators(username)
+
+    def test_user_create_verify_rejects_invisible_username(self):
+        onboard_user = user_create(email="test@example.com")
+
+        with self.assertRaises(ValidationError):
+            user_create_verify(username="anna\u3164",
+                               verification_code=str(onboard_user.verification_code),
+                               password="TestPassword!=27")
+
+        self.assertFalse(User.objects.filter(email="test@example.com").exists())
+
+    def test_user_create_verify_api_rejects_invisible_username(self):
+        onboard_user = user_create(email="test@example.com")
+        data = dict(username="anna\u3164",
+                    verification_code=str(onboard_user.verification_code),
+                    password="TestPassword!=27")
+
+        response = generate_request(UserCreateVerifyApi, data=data)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('username', response.data['detail'])
+        self.assertFalse(User.objects.filter(email="test@example.com").exists())
+
+        # The rejected attempt must not use up the verification code, and a visible username must work
+        response = generate_request(UserCreateVerifyApi, data=dict(data, username="anna"))
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(User.objects.filter(email="test@example.com", username="anna").exists())
+
+    def test_user_update_api_rejects_invisible_username(self):
+        user = UserFactory(username="anna")
+
+        for username in ["new\u3164name", "new\u200bname", "\u3164\u3164\u3164"]:
+            with self.subTest(username):
+                response = generate_request(UserUpdateApi, data=dict(username=username), user=user)
+
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+                self.assertIn('username', response.data['detail'])
+                self.assertEqual(User.objects.get(id=user.id).username, "anna")
+
+        response = generate_request(UserUpdateApi, data=dict(username="new_name"), user=user)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(User.objects.get(id=user.id).username, "new_name")
 
     def test_user_create_api_with_existing_onboard_user(self):
         """Test UserCreateApi when an OnboardUser with the same email already exists"""

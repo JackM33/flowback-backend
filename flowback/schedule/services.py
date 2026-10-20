@@ -112,13 +112,15 @@ def schedule_event_subscribe(*, user,
                              event_ids: list[int],
                              user_tags: list[str] = None,
                              locked: bool = True,
-                             reminders: list[int] = None) -> None:
+                             reminders: list[int] = None,
+                             occurrence_start: datetime.datetime = None) -> None:
     schedule = Schedule.objects.get(id=schedule_id)
     schedule.subscribe_events(user=user,
                               event_ids=event_ids,
                               user_tags=user_tags,
                               reminders=reminders,
-                              locked=locked)
+                              locked=locked,
+                              occurrence_start=occurrence_start)
 
 
 def schedule_event_unsubscribe(*, user,

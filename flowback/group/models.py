@@ -481,6 +481,9 @@ class GroupThread(BaseModel, NotifiableModel):
     pinned = models.BooleanField(default=False)
     comment_section = models.ForeignKey(CommentSection, default=comment_section_create, on_delete=models.DO_NOTHING)
     active = models.BooleanField(default=True)
+
+    # Archived threads stay readable but are hidden from lists unless explicitly requested
+    is_archived = models.BooleanField(default=False)
     attachments = models.ForeignKey(FileCollection, on_delete=models.CASCADE, null=True, blank=True)
     work_group = models.ForeignKey(WorkGroup, on_delete=models.SET_NULL, null=True, blank=True)
     public = models.BooleanField(default=False)

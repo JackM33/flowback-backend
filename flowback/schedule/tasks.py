@@ -21,5 +21,8 @@ def event_notify(event_id: int):
     if event.start_date > timezone.now():
         return
 
+    # Followers of a single occurrence are done once it has been held
+    event.scheduleeventsubscription_set.filter(occurrence_start__lt=timezone.now()).delete()
+
     # Past the repeat end date there is no next occurrence, which leaves no notifications to create
     event.regenerate_notifications()

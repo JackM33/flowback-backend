@@ -45,6 +45,7 @@ class PollListApi(APIView):
         status = serializers.IntegerField(required=False)
         phase = serializers.CharField(required=False)
         work_group_ids = serializers.CharField(required=False)
+        is_archived = serializers.BooleanField(required=False, default=None, allow_null=True)
 
         # Blob of gt and lt filter fields
         start_date__gt = serializers.DateTimeField(required=False)
@@ -79,6 +80,7 @@ class PollListApi(APIView):
         hide_poll_users = serializers.BooleanField(source='created_by.group.hide_poll_users')
         winning_proposal_id = serializers.IntegerField(source='result.id', allow_null=True)
         total_comments = serializers.IntegerField()
+        bookmarked = serializers.BooleanField()
         total_proposals = serializers.IntegerField()
         total_predictions = serializers.IntegerField()
         work_group_id = serializers.IntegerField(allow_null=True)
@@ -128,6 +130,7 @@ class PollListApi(APIView):
                       'pinned',
                       'dynamic',
                       'total_comments',
+                      'bookmarked',
                       'total_proposals',
                       'total_predictions',
                       'quorum',
@@ -137,6 +140,7 @@ class PollListApi(APIView):
                       'work_group_id',
                       'work_group_name',
                       'phase',
+                      'is_archived',
                       'can_delete')
 
     def get(self, request, group_id: int = None):

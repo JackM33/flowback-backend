@@ -118,6 +118,9 @@ class ScheduleEventListAPI(APIView):
         user_tags = serializers.ListField(child=serializers.CharField(), allow_null=True)
         locked = serializers.BooleanField(allow_null=True)
         subscribed = serializers.BooleanField()
+        subscribed_occurrence = serializers.DateTimeField(allow_null=True,
+                                                          help_text="Start of the one occurrence the user follows, "
+                                                                    "null if they follow every occurrence")
 
     def get(self, request, *args, **kwargs):
         serializer = self.FilterSerializer(data=request.query_params)
@@ -201,6 +204,10 @@ class ScheduleEventSubscribeAPI(APIView):
                                             required=False,
                                             allow_null=True,
                                             max_length=10)
+        occurrence_start = serializers.DateTimeField(required=False,
+                                                     allow_null=True,
+                                                     help_text="Start of the one occurrence of a repeating event "
+                                                               "to follow, leave empty to follow every occurrence")
 
     def post(self, request, schedule_id: int):
         serializer = self.InputSerializer(data=request.data)
